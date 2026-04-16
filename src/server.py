@@ -1,5 +1,5 @@
 import socket # Basic socket library for TCP/IP communication
-import threading
+import threading # For Multi-threadedm Web Server
 import os 
 
 # CONFIGURATION
@@ -25,6 +25,19 @@ def handle_request(request):
     response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello, World!"
     return response
 
+def handle_client(client_connection, client_address):
+    try:
+        # Get the client request
+        request = client_connection.recv(1024).decode()
+        # Handle the request
+        response = handle_request(request)
+        client_connection.sendall(response.encode())
+    except Exception as e:
+        warn(f"Error handling client {client_address}: {e}")
+    finally:
+        # Close the connection
+        client_connection.close()
+
 def main(): # Main part of the server
     try:
         # Create Socket
@@ -34,18 +47,14 @@ def main(): # Main part of the server
         log(f"Listening on {SERVER_HOST}:{SERVER_PORT}...", always_print=True)
         #listen(No. of connections to queue)
         server_socket.listen(5)
+
+        # Main loop to accept and handle incoming connections
         while True:
             client_connection, client_address = server_socket.accept()
 
-            # Get the client request
-            request = client_connection.recv(1024).decode()
+            thread = threading.Thread(target=handle_client, args=(client_connection, client_address))
+            thread.start()
 
-            # Handle the request
-            response = handle_request(request)
-            client_connection.sendall(response.encode())
-
-            # Close the connection
-            client_connection.close()
 
     except KeyboardInterrupt:
         log("Terminating Web Server because of Keyboard Interrupt.")
