@@ -50,5 +50,5 @@ curl -I http://localhost:80/index.html
 - [x] GET command for both text files and image files
 - [x] HEAD command
 - [ ] Five types of response statuses ONLY, including 200 OK, 400 Bad Request, 403 Forbidden, 404 File Not Found, 304 Not Modified
-- [ ] Handle Last-Modified and If-Modified-Since header fields
+- [x] Handle Last-Modified and If-Modified-Since header fields
 - [ ] Handle Connection header field for both HTTP persistent connection (keep-alive) and non-persistent connection (close) 

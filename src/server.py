@@ -1,6 +1,7 @@
 import socket # Basic socket library for TCP/IP communication
 import threading # For Multi-threaded Web Server
 import os 
+from datetime import datetime, timezone
 
 # CONFIGURATION
 SERVER_HOST = '0.0.0.0'  # Listen IP -> 0.0.0.0: All
@@ -74,6 +75,38 @@ def generate_content_type(file_path):
     _, ext = os.path.splitext(file_path)
     return CONTENT_TYPE_MAPPING.get(ext, CONTENT_TYPE_MAPPING['default'])
 
+def format_http_datetime(dt):
+    """
+    Format datetime object to IMF-fixdate used by HTTP headers.
+    @param dt: datetime object
+    @return: HTTP-date string in GMT
+    """
+    return dt.astimezone(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+def parse_http_datetime(http_datetime):
+    """
+    Parse IMF-fixdate HTTP datetime string.
+    @param http_datetime: value of If-Modified-Since header
+    @return: timezone-aware datetime in UTC, or None if parse fails
+    """
+    try:
+        return datetime.strptime(http_datetime, "%a, %d %b %Y %H:%M:%S GMT").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+def get_last_modified_datetime(file_path):
+    """
+    Read file modification time and convert to UTC datetime (whole-second)
+    @param file_path: path of target file
+    @return: timezone-aware datetime in UTC, or None if metadata is unavailable
+    """
+    try:
+        # HTTP-date only has second precision, so drop fractional seconds.
+        return datetime.fromtimestamp(int(os.path.getmtime(file_path)), tz=timezone.utc)
+    except OSError as e:
+        warn_console(f"Unable to read mtime for {file_path}: {e}")
+        return None
+
 def generate_respond_headers(headers_dict):
     """
     Generate the HTTP response headers string from a dictionary of header key-value pairs.
@@ -91,7 +124,6 @@ def handle_request(method, path, version, request_headers):
     @param headers: Dictionary of HTTP headers
     @return: Formatted HTTP response, ready to be sent back to the client.
     """
-    # TODO: Implement actual request handling logic here (e.g., serve files, handle errors, etc.)
     
     # First, we need to check if the method is supported (GET or HEAD)
     if method not in ['GET', 'HEAD']:
@@ -116,13 +148,31 @@ def handle_request(method, path, version, request_headers):
         response = generate_error_response(404, method)  # File Not Found
         return response
 
+    # Handelling "If-Modified-Since" header for cache validation
+    last_modified_dt = get_last_modified_datetime(file_path)
+    if_modified_since_value = request_headers.get('if-modified-since')
+    if if_modified_since_value and last_modified_dt is not None:
+        if_modified_since_dt = parse_http_datetime(if_modified_since_value)
+        # Invalid date format is ignored by sending normal 200 response.
+        if if_modified_since_dt is not None and last_modified_dt <= if_modified_since_dt:
+            response_headers = {
+                "Content-Length": "0",
+                "Last-Modified": format_http_datetime(last_modified_dt)
+            }
+            first_line = f"HTTP/1.1 304 Not Modified\r\n"
+            header_part = generate_respond_headers(response_headers)
+            return first_line + header_part + "\r\n"
+
     # Identify the content type based on file extension
     content_type = generate_content_type(file_path)
+
     # Craft the HEADER of the response
     response_headers = {
         "Content-Type": content_type,
         "Content-Length": str(len(content)) # For "Proper response message exchange" and avoid long loading time, 
     }
+    if last_modified_dt is not None:
+        response_headers["Last-Modified"] = format_http_datetime(last_modified_dt)
     # since read mode is rb, content = bytes, len(content) = byte size of the file, which = correct value for Content-Length header.
 
     first_line = f"HTTP/1.1 200 OK\r\n"
@@ -183,7 +233,8 @@ def handle_client(client_connection, client_address):
         for line in request_info[1:]:
             if ": " in line:
                 key, value = line.split(": ", 1)
-                headers[key] = value
+                # Normalize to lower-case for case-insensitive HTTP header lookup.
+                headers[key.strip().lower()] = value.strip()
 
         # Handle the request - Function goest to handle_request()
         response = handle_request(method, path, version, headers)
