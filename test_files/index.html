@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+		<title>Hello, World!</title>
+		<meta name="viewport" content="width=device-width,initial-scale=1">
+		<meta name="robots" content="noindex">
+        <!-- Ver 2.0 10 Dec 2024-->
+        <!-- Modern Experience-->
+        <!-- Adjusted for COMP2322 as template-->
+		<style>
+			body {
+				background-color: #f1f1f1;
+				color: #000;
+				font-family: 'Segoe UI', 'Verdana','Trebuchet MS', sans-serif; /** Safe font stack **/
+				margin: 0;
+				position: relative;
+
+			}
+            #mainContent {
+                display: block;
+                margin: 0 auto;
+                width: 100%;
+                max-width: 1000px;
+                position: relative;
+            }
+            .container {
+                margin:0 20px;
+            }
+			h1 {
+				color: #000;
+                font-weight: 500;
+
+			}
+            h2{
+                color: #000;
+                font-weight: 600;
+                font-size: 1.4em;
+            }
+            h5{
+                color: #000;
+                font-weight: 400;
+            }
+            .topElement{
+                margin-top: 40px;
+            }
+            p{
+                color: #000;
+                font-weight: 400;
+                max-width: 80%;
+            }
+            a{
+                color: #0078ff;
+                text-decoration: none;
+                position: relative;
+                transition: color 0.3s ease;
+            }
+
+            a::after {
+                content: "";
+                position: absolute;
+                left: 0;
+                bottom: -2px;
+                width: 0;
+                height: 2px;
+                background-color: #0078ff;
+                transition: width 0.3s ease;
+            }
+
+            a:hover {
+                color: #0056cc;
+            }
+
+            a:hover::after {
+                width: 100%;
+            }
+            a:focus {
+                outline: 2px dashed #0078ff;
+                outline-offset: 3px;
+            }
+
+            .menu_bt {
+                display: inline-block;
+				background-color: #0056cc;
+				margin-right: 0;
+                border: 3px solid #0056cc;
+                border-radius: 6px;
+                color: #fff;
+                padding: 12px 24px;
+                transition: all .3s ease;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+			}
+			.menu_bt:hover {
+				background-color: #fff;
+                color: #0056cc;
+				transition: all .3s;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+			}
+			.bt_group {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                column-gap: 24px;
+                row-gap: 16px;
+				margin-top: 20px;
+			}
+            .buttonLink {
+                text-decoration: none;
+                transition: none;
+                font-weight: 700;
+                font-size: 16px;
+            }
+            .buttonLink:hover {
+                text-decoration: none;
+            
+            }
+            .buttonLink::after{
+                content: none;
+            }
+            @media screen and (max-width: 1000px) {
+                p{
+                    max-width: 95%;
+                }
+            }
+            @media screen and (max-width: 730px) {
+                p{
+                    max-width: 100%;
+                }
+            }
+            @media screen and (max-width: 600px) {
+                .bt_group {
+                    grid-template-columns: 1fr;
+                    row-gap: 10px;
+                }
+                .menu_bt {
+                    margin-right: 0;
+                }
+            }
+
+            /** Dark Mode - To keep browser compatibility, CSS variables are not used. */
+            /* Dark mode styles */
+            @media (prefers-color-scheme: dark) {
+                body {
+                    background-color: #252629;
+                    color: #ffffff;
+                }
+                h1 {
+                    color: #ffffff;
+                }
+                h2 {
+                    color: #ffffff;
+                }
+                h5 {
+                    color: #ffffff;
+                }
+                p{
+                    color: #ffffff;
+                }
+                a {
+                    color: #86d9fc;
+                }
+                a::after {
+                    background-color: #86d9fc;
+                }
+                a:hover {
+                    color: #5cb8ff;
+                }
+                .menu_bt {
+                    background-color: #333333;
+                    border-color: #ffffff;
+                    color: #ffffff;
+                }
+            }
+		</style>
+	</head>
+	<body>
+		<main id="mainContent">
+			<div class="container">
+				<div>
+                    <h5 class="topElement">INFORMATION</h5>
+					<h1>Hello, World!</h1>
+				</div>
+				<p>
+                <div>
+                    <h2>What happened?</h2>
+                    <p>Looks like the web server for COMP2322 is up and running!</p>
+                    <p>This web server dir is test_files/. You may adjust the content in this directory to test the web server implementation.</p>
+                </div>
+                <h2>What can you do?</h2>
+                <p>Here is some suggested actions for testing:</p>
+				<div class="bt_group">
+                <noscript>Javascript is disabled in your browser. The links below will use fallback paths.</noscript>
+                    <a href="/index.html" class="menu_bt buttonLink" data-target_file="index.html">Reload this page</a>
+                    <a href="/another_page.html" class="menu_bt buttonLink" data-target_file="another_page.html">Visit /another_page.html for another test page with image</a>
+                    <a href="/folder/page_in_folder.html" class="menu_bt buttonLink" data-target_file="folder/page_in_folder.html">Visit /folder/page_in_folder.html for testing nested folders</a>
+                    <a href="/generate_404" class="menu_bt buttonLink" data-target_file="generate_404">Visit /generate_404 to test 404 Not Found response</a>
+				</div>
+			</div>
+		</main>
+	</body>
+
+</html>
