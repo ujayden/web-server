@@ -2,6 +2,7 @@ import socket # Basic socket library for TCP/IP communication
 import threading # For Multi-threaded Web Server
 import os 
 from datetime import datetime, timezone
+import logging
 
 # CONFIGURATION
 SERVER_HOST = '0.0.0.0'  # Listen IP -> 0.0.0.0: All
@@ -11,6 +12,8 @@ SERVER_ROOT_DIR = os.path.join(os.path.dirname(SERVER_SOURCE_DIR), 'test_files')
 ROOT_TO_INDEX_HTML = True # True: For "/" request -> "index.html", False: For "/" request -> 404
 LOG_LEVEL = 2            # 0: No logs, 1: Basic logs, 2: Detailed logs
 ACCESS_LOG_FILE = 'server.log'  # Records the historical information about the client requests and server responses
+ACCESS_LOG_LOCATION = os.path.join(os.path.dirname(SERVER_SOURCE_DIR), ACCESS_LOG_FILE)  # Log file in the same directory as server.py
+ACCESS_LOG_TO_CONSOLE = True # Print access log to console or not.
 KEEP_ALIVE_TIMEOUT_SECONDS = 5  # Timeout for idle persistent connections
 QUEUE_TCP_CONNECTIONS = 10 # Number of TCP connections to queue (for listen())
 
@@ -37,6 +40,7 @@ CONTENT_TYPE_MAPPING = {
     }
 # END OF CONFIGURATION
 
+
 # LOGGING FUNCTIONS
 def log_console(message, always_print=False):
     if LOG_LEVEL >= 2 or always_print:
@@ -45,12 +49,86 @@ def log_console(message, always_print=False):
 def warn_console(message):
     if LOG_LEVEL >= 1:
         print(f"[WARN] {message}")
+
+logger = logging.getLogger("access_logger")
+if not logger.handlers:
+    file_handler = logging.FileHandler(ACCESS_LOG_LOCATION)
+    file_handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+def access_logger(client_address, method, path, version, status_code, content_length, connection_mode, request_headers=None):
+    """
+    Log access info for each HTTP request.
+
+    @param client_address: Client IP address and port tuple from socket.accept()
+    @param method: HTTP method from request line
+    @param path: Request path
+    @param version: HTTP version from request line
+    @param status_code: HTTP status code returned to client
+    @param content_length: Content-Length returned to client
+    @param connection_mode: 'keep-alive' or 'close'
+    @param request_headers: Request header dictionary (used for User-Agent)
+    """
+    client_ip, client_port = client_address
+    user_agent = "-"
+    if request_headers:
+        user_agent = request_headers.get('user-agent', '-') or '-'
+
+    user_agent = str(user_agent).replace('\\', '\\\\').replace('"', '\\"')
+
+    timestamp = datetime.now().astimezone().strftime("%d/%b/%Y:%H:%M:%S %z")
+    request_line = f"{method} {path} {version}"
+    log_line = (
+        f"{client_ip} - {client_port} [{timestamp}] \"{request_line}\" "
+        f"{status_code} {content_length} \"{connection_mode}\" \"{user_agent}\""
+    )
+
+    if ACCESS_LOG_TO_CONSOLE:
+        log_console(log_line)
+
+    try:
+        logger.info(log_line)
+    except Exception as e:
+        warn_console(f"Failed to write access log entry: {e}")
+
+def extract_response_log_fields(response_bytes):
+    """
+    Extract status code and content length from raw HTTP response bytes.
+    @param response_bytes: Full HTTP response as bytes
+    @return: Tuple (status_code, content_length)
+    """
+    status_code = 0
+    content_length = 0
+
+    try:
+        header_part = response_bytes.split(b'\r\n\r\n', 1)[0]
+        header_text = header_part.decode('iso-8859-1')
+        header_lines = header_text.split('\r\n')
+
+        first_line_parts = header_lines[0].split()
+        if len(first_line_parts) >= 2:
+            status_code = int(first_line_parts[1])
+
+        for line in header_lines[1:]:
+            if ':' not in line:
+                continue
+            key, value = line.split(':', 1)
+            if key.strip().lower() == 'content-length':
+                content_length = int(value.strip())
+                break
+    except Exception:
+        pass
+
+    return status_code, content_length
+
 # END OF LOGGING FUNCTIONS
 
 # FILE IO FUNCTIONS
 def read_file(file_path):
     """
-    Read file (support Binary) from spectific path, the return is the content of the file and do not modified. 
+    Read file (Binary Mode) from specific path, the return is the content of the file and do not modified. 
     [!] FileNotFoundError does not print in console. Since we dont have 500, it will assume **404** in future step.
     @param file_path: The path of the file to be read.
     @return: Tuple (success, content) where success is a boolean indicating if the file was read successfully, and content is the file content if successful, or None if not.
@@ -311,7 +389,10 @@ def handle_client(client_connection, client_address):
             if method is None:
                 warn_console(f"Received malformed request from {client_address} - Invalid request line")
                 response = generate_error_response(400, connection_mode='close')
-                client_connection.sendall(response.encode())
+                response_bytes = response.encode()
+                client_connection.sendall(response_bytes)
+                status_code, content_length = extract_response_log_fields(response_bytes)
+                access_logger(client_address, 'UNKNOWN', '-', 'HTTP/1.1', status_code, content_length, 'close', {})
                 break
 
             # Early check if the method is supported
@@ -322,9 +403,13 @@ def handle_client(client_connection, client_address):
             # Handle the request - Function goes to handle_request()
             response = handle_request(method, path, version, headers, connection_mode)
             if isinstance(response, bytes):
-                client_connection.sendall(response)
+                response_bytes = response
             else:
-                client_connection.sendall(response.encode())
+                response_bytes = response.encode()
+
+            client_connection.sendall(response_bytes)
+            status_code, content_length = extract_response_log_fields(response_bytes)
+            access_logger(client_address, method, path, version, status_code, content_length, connection_mode, headers)
 
             if not keep_alive:
                 break

@@ -119,10 +119,10 @@ Last-Modified: <http date>
 
 # Checklist
 - [x] Multi-threaded Web server, each thread handles one HTTP request
-- [ ] Proper request  and response message exchanges
+- [x] Proper request and response message exchanges
 - [x] GET command for both text files and image files
 - [x] HEAD command
 - [ ] Five types of response statuses ONLY, including 200 OK, 400 Bad Request, 403 Forbidden, 404 File Not Found, 304 Not Modified
 - [x] Handle Last-Modified and If-Modified-Since header fields
 - [x] Handle Connection header field for both HTTP persistent connection (keep-alive) and non-persistent connection (close) 
-- [ ] A complete log file records the historical information about the client requests and server responses.
+- [x] A complete log file records the historical information about the client requests and server responses.
