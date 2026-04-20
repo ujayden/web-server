@@ -422,6 +422,7 @@ def handle_client(client_connection, client_address):
         client_connection.close()
 
 def main(): # Main part of the server
+    server_socket = None
     try:
         # Create Socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -443,7 +444,8 @@ def main(): # Main part of the server
     except Exception as e:
         warn_console(f"An error occurred: {e}")
     finally:
-        server_socket.close()
+        if server_socket:
+            server_socket.close()
         log_console("Server has been stopped.")
 
 

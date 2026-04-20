@@ -2,3 +2,8 @@
 127.0.0.1 - 54815 [21/Apr/2026:00:15:23 +0800] "GET /another_page.html HTTP/1.1" 200 7009 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 127.0.0.1 - 54815 [21/Apr/2026:00:15:23 +0800] "GET /demo_img.jpeg HTTP/1.1" 200 1725262 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 127.0.0.1 - 52111 [21/Apr/2026:00:15:23 +0800] "GET /demo_img.png HTTP/1.1" 200 15467367 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+127.0.0.1 - 61437 [21/Apr/2026:00:28:10 +0800] "GET / HTTP/1.1" 200 6410 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+127.0.0.1 - 61437 [21/Apr/2026:00:28:13 +0800] "GET /another_page.html HTTP/1.1" 200 7009 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+127.0.0.1 - 61437 [21/Apr/2026:00:28:13 +0800] "GET /demo_img.jpeg HTTP/1.1" 200 1725262 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+127.0.0.1 - 61656 [21/Apr/2026:00:28:13 +0800] "GET /demo_img.png HTTP/1.1" 200 15467367 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+127.0.0.1 - 61656 [21/Apr/2026:00:28:15 +0800] "GET /generate_404 HTTP/1.1" 404 14 "keep-alive" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
