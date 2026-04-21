@@ -241,6 +241,16 @@ def http_version_checker(version):
     """
     return version in ['HTTP/1.0', 'HTTP/1.1']
 
+def response_http_version(version):
+    """
+    Resolve HTTP version for response status line.
+    @param version: HTTP version string from request line
+    @return: HTTP/1.0 or HTTP/1.1 if supported, otherwise HTTP/1.1
+    """
+    if http_version_checker(version):
+        return version
+    return 'HTTP/1.1'
+
 def host_header_checker(version, request_headers):
     """
     Validate Host header for HTTP/1.1 requests.
@@ -273,10 +283,12 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
     @return: Formatted HTTP response, ready to be sent back to the client.
     """
     
+    response_version = response_http_version(version)
+
     # First, we need to check if the method is supported (GET or HEAD)
     if method not in ['GET', 'HEAD']:
         warn_console(f"Unsupported HTTP method: {method}")
-        response = generate_error_response(400, method, connection_mode)  # Bad Request for unsupported methods
+        response = generate_error_response(400, method, connection_mode, version=response_version)  # Bad Request for unsupported methods
         return response
 
     # Then, process path and try to serve the requested file
@@ -284,7 +296,7 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
         file_path = os.path.join(SERVER_ROOT_DIR, 'index.html')
     elif path == '/' and not ROOT_TO_INDEX_HTML:
         warn_console(f"Root path '/' requested but ROOT_TO_INDEX_HTML is set to False.")
-        response = generate_error_response(404, method, connection_mode)
+        response = generate_error_response(404, method, connection_mode, version=response_version)
         return response
     else:
         file_path = os.path.join(SERVER_ROOT_DIR, path.lstrip('/'))
@@ -293,10 +305,10 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
     if not success:
         if error_type == "permission_denied":
             warn_console(f"Forbidden file access: {file_path}")
-            response = generate_error_response(403, method, connection_mode)
+            response = generate_error_response(403, method, connection_mode, version=response_version)
         else:
             warn_console(f"File not found or IO error: {file_path}")
-            response = generate_error_response(404, method, connection_mode)  # File Not Found
+            response = generate_error_response(404, method, connection_mode, version=response_version)  # File Not Found
         return response
 
     # Handelling "If-Modified-Since" header for cache validation
@@ -311,7 +323,7 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
                 "Last-Modified": format_http_datetime(last_modified_dt)
             }
             add_connection_headers(response_headers, connection_mode)
-            first_line = f"HTTP/1.1 304 Not Modified\r\n"
+            first_line = f"{response_version} 304 Not Modified\r\n"
             header_part = generate_respond_headers(response_headers)
             return first_line + header_part + "\r\n"
 
@@ -328,7 +340,7 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
     add_connection_headers(response_headers, connection_mode)
     # since read mode is rb, content = bytes, len(content) = byte size of the file, which = correct value for Content-Length header.
 
-    first_line = f"HTTP/1.1 200 OK\r\n"
+    first_line = f"{response_version} 200 OK\r\n"
     header_part = generate_respond_headers(response_headers)
     # IF method is HEAD, we only return the header without the body
     response = first_line + header_part + "\r\n"
@@ -336,14 +348,16 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
         response = response.encode() + content
     return response
 
-def generate_error_response(status_code, method='GET', connection_mode='close'):
+def generate_error_response(status_code, method='GET', connection_mode='close', version='HTTP/1.1'):
     """
     Generate general HTTP error response based on the status code provided. If the status code is not recognized, defaults is "Unknown Error".
     @param status_code: HTTP status code (e.g., 400, 403, 404)
     @param method: HTTP method (default: 'GET'), used to determine if the response should include a body (False for HEAD requests - RFC 9110)
     @param connection_mode: Connection response mode ('keep-alive' or 'close')
+    @param version: HTTP version used for response status line
     @return: Formatted HTTP response string with the appropriate status message and content.
     """
+    response_version = response_http_version(version)
     status_message = STATUS_MESSAGES.get(status_code, "Unknown Error")
     body = status_message
 
@@ -353,7 +367,7 @@ def generate_error_response(status_code, method='GET', connection_mode='close'):
     }
     add_connection_headers(response_headers, connection_mode)
 
-    first_line = f"HTTP/1.1 {status_code} {status_message}\r\n"
+    first_line = f"{response_version} {status_code} {status_message}\r\n"
     header_part = generate_respond_headers(response_headers)
     response = first_line + header_part + "\r\n"
 
@@ -436,7 +450,7 @@ def handle_client(client_connection, client_address, request_buffer=b''):
 
         if not http_version_checker(version):
             warn_console(f"Unsupported HTTP version from {client_address}: {version}")
-            response = generate_error_response(400, connection_mode='close')
+            response = generate_error_response(400, connection_mode='close', version=version)
             response_bytes = response.encode()
             client_connection.sendall(response_bytes)
             status_code, content_length = extract_response_log_fields(response_bytes)
@@ -445,7 +459,7 @@ def handle_client(client_connection, client_address, request_buffer=b''):
 
         if not host_header_checker(version, headers):
             warn_console(f"Missing Host header in HTTP/1.1 request from {client_address}")
-            response = generate_error_response(400, connection_mode='close')
+            response = generate_error_response(400, connection_mode='close', version=version)
             response_bytes = response.encode()
             client_connection.sendall(response_bytes)
             status_code, content_length = extract_response_log_fields(response_bytes)
