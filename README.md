@@ -75,36 +75,7 @@ Last-Modified: <http date>
 ```
 Note: `HEAD` only returns headers, no body.
 
-Unsupported method (POST)
-```text
-curl -i -X POST http://localhost:80/index.html
-```
-Expected output:
-```text
-HTTP/1.1 400 Bad Request
-Content-Type: text/plain
-Content-Length: 11
-
-Bad Request
-```
-
-Cache validation (304)
-
-Step A: get `Last-Modified`
-```text
-curl -I http://localhost:80/index.html
-```
-
-Step B: send `If-Modified-Since` with that same value
-```text
-curl -i http://localhost:80/index.html -H "If-Modified-Since: <paste Last-Modified here>"
-```
-Expected output (main lines):
-```text
-HTTP/1.1 304 Not Modified
-Content-Length: 0
-Last-Modified: <http date>
-```
+For more detailed test cases and expected outputs, please refer to `test-cases.md`.
 
 # File Structure
 
@@ -122,7 +93,7 @@ Last-Modified: <http date>
 - [x] Proper request and response message exchanges
 - [x] GET command for both text files and image files
 - [x] HEAD command
-- [ ] Five types of response statuses ONLY, including 200 OK, 400 Bad Request, 403 Forbidden, 404 File Not Found, 304 Not Modified
+- [x] Five types of response statuses ONLY, including 200 OK, 400 Bad Request, 403 Forbidden, 404 File Not Found, 304 Not Modified
 - [x] Handle Last-Modified and If-Modified-Since header fields
 - [x] Handle Connection header field for both HTTP persistent connection (keep-alive) and non-persistent connection (close) 
-- [x] A complete log file records the historical information about the client requests and server responses.
+- [x] A complete log file records the historical information about the client requests and server responses

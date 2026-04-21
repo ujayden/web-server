@@ -15,7 +15,7 @@ ACCESS_LOG_FILE = 'server.log'  # Records the historical information about the c
 ACCESS_LOG_LOCATION = os.path.join(os.path.dirname(SERVER_SOURCE_DIR), ACCESS_LOG_FILE)  # Log file in the same directory as server.py
 ACCESS_LOG_TO_CONSOLE = True # Print access log to console or not.
 KEEP_ALIVE_TIMEOUT_SECONDS = 5  # Timeout for idle persistent connections
-QUEUE_TCP_CONNECTIONS = 10 # Number of TCP connections to queue (for listen())
+QUEUE_TCP_CONNECTIONS = 256 # Number of TCP connections to queue (for listen())
 
 STATUS_MESSAGES = {
     200: "OK",
@@ -38,6 +38,12 @@ CONTENT_TYPE_MAPPING = {
     '.txt': 'text/plain',
     'default': 'application/octet-stream'
     }
+
+BLOCK_PATH_LIST = {
+    # For demostrate 403 Forbidden
+    # These PATH will generate 403
+    '/forbidden.html', # Specific PATH
+}
 # END OF CONFIGURATION
 
 
@@ -131,20 +137,32 @@ def read_file(file_path):
     Read file (Binary Mode) from specific path, the return is the content of the file and do not modified. 
     [!] FileNotFoundError does not print in console. Since we dont have 500, it will assume **404** in future step.
     @param file_path: The path of the file to be read.
-    @return: Tuple (success, content) where success is a boolean indicating if the file was read successfully, and content is the file content if successful, or None if not.
+    @return: Tuple (success, content, error_types) - success: boolean indicating read status,  content: file content if successful, or None if not, error_types: string indicating the type of error if unsuccessful.
+    
     """
     try:
+        file_path = os.path.abspath(file_path)
+
         # Safety check
         if os.path.commonpath([SERVER_ROOT_DIR, file_path]) != SERVER_ROOT_DIR:
-            raise Exception("Attempt to access file outside of root directory.")
-        
+            raise PermissionError("Attempt to access file outside of server root directory.")
+
+        # Convert filesystem path back to URL-like path for BLOCK_PATH_LIST matching.
+        normalized_path = '/' + os.path.relpath(file_path, SERVER_ROOT_DIR).replace('\\', '/')
+        if normalized_path in BLOCK_PATH_LIST:
+            raise PermissionError(f"Blocked path from BLOCK_PATH_LIST: {normalized_path}")
+
         with open(file_path, 'rb') as file:
-            return True, file.read()
+            return True, file.read(), None
+    except PermissionError as e:
+        # This include: OS-level permission issues, illegal path, and BLOCK_PATH_LIST check
+        warn_console(f"Permission denied for file {file_path}: {e}")
+        return False, None, "permission_denied"
     except FileNotFoundError:
-        return False, None
+        return False, None, "not_found"
     except Exception as e:
         warn_console(f"Error reading file {file_path}: {e}")
-        return False, None
+        return False, None, "internal_error"
 
 def generate_content_type(file_path):
     """
@@ -252,11 +270,14 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
     else:
         file_path = os.path.join(SERVER_ROOT_DIR, path.lstrip('/'))
  
-    success, content = read_file(file_path)
-    # Since no 500, success = False is treated as 404
+    success, content, error_type = read_file(file_path)
     if not success:
-        warn_console(f"File not found or IO error: {file_path}")
-        response = generate_error_response(404, method, connection_mode)  # File Not Found
+        if error_type == "permission_denied":
+            warn_console(f"Forbidden file access: {file_path}")
+            response = generate_error_response(403, method, connection_mode)
+        else:
+            warn_console(f"File not found or IO error: {file_path}")
+            response = generate_error_response(404, method, connection_mode)  # File Not Found
         return response
 
     # Handelling "If-Modified-Since" header for cache validation
