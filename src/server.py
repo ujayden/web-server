@@ -233,6 +233,25 @@ def keep_alive_checker(version, request_headers):
         return 'keep-alive' in connection_header_set # Return TRUE if 'keep-alive' by client
     return False
 
+def http_version_checker(version):
+    """
+    Validate HTTP version from request line.
+    @param version: HTTP version string from request line
+    @return: True if version is supported, otherwise False
+    """
+    return version in ['HTTP/1.0', 'HTTP/1.1']
+
+def host_header_checker(version, request_headers):
+    """
+    Validate Host header for HTTP/1.1 requests.
+    @param version: HTTP version string from request line
+    @param request_headers: Request header dictionary
+    @return: True if Host header is valid (or not required), otherwise False
+    """
+    if version != 'HTTP/1.1':
+        return True
+    return bool(request_headers.get('host', '').strip())
+
 def add_connection_headers(response_headers, connection_mode):
     """
     Add Connection headers to response headers.
@@ -396,51 +415,72 @@ def parse_http_request(raw_request):
 
     return method, path, version, headers
 
-def handle_client(client_connection, client_address):
+def handle_client(client_connection, client_address, request_buffer=b''):
+    close_connection = True
     try:
         client_connection.settimeout(KEEP_ALIVE_TIMEOUT_SECONDS)
-        request_buffer = b''
 
-        while True:
-            raw_request, request_buffer = read_raw_http_request(client_connection, request_buffer)
-            if raw_request is None:
-                break
+        raw_request, request_buffer = read_raw_http_request(client_connection, request_buffer)
+        if raw_request is None:
+            return
 
-            method, path, version, headers = parse_http_request(raw_request)
-            if method is None:
-                warn_console(f"Received malformed request from {client_address} - Invalid request line")
-                response = generate_error_response(400, connection_mode='close')
-                response_bytes = response.encode()
-                client_connection.sendall(response_bytes)
-                status_code, content_length = extract_response_log_fields(response_bytes)
-                access_logger(client_address, 'UNKNOWN', '-', 'HTTP/1.1', status_code, content_length, 'close', {})
-                break
-
-            # Early check if the method is supported
-            is_supported_method = method in ['GET', 'HEAD']
-            keep_alive = keep_alive_checker(version, headers) and is_supported_method
-            connection_mode = 'keep-alive' if keep_alive else 'close'
-
-            # Handle the request - Function goes to handle_request()
-            response = handle_request(method, path, version, headers, connection_mode)
-            if isinstance(response, bytes):
-                response_bytes = response
-            else:
-                response_bytes = response.encode()
-
+        method, path, version, headers = parse_http_request(raw_request)
+        if method is None:
+            warn_console(f"Received malformed request from {client_address} - Invalid request line")
+            response = generate_error_response(400, connection_mode='close')
+            response_bytes = response.encode()
             client_connection.sendall(response_bytes)
             status_code, content_length = extract_response_log_fields(response_bytes)
-            access_logger(client_address, method, path, version, status_code, content_length, connection_mode, headers)
+            access_logger(client_address, 'UNKNOWN', '-', 'HTTP/1.1', status_code, content_length, 'close', {})
+            return
 
-            if not keep_alive:
-                break
+        if not http_version_checker(version):
+            warn_console(f"Unsupported HTTP version from {client_address}: {version}")
+            response = generate_error_response(400, connection_mode='close')
+            response_bytes = response.encode()
+            client_connection.sendall(response_bytes)
+            status_code, content_length = extract_response_log_fields(response_bytes)
+            access_logger(client_address, method, path, version, status_code, content_length, 'close', headers)
+            return
+
+        if not host_header_checker(version, headers):
+            warn_console(f"Missing Host header in HTTP/1.1 request from {client_address}")
+            response = generate_error_response(400, connection_mode='close')
+            response_bytes = response.encode()
+            client_connection.sendall(response_bytes)
+            status_code, content_length = extract_response_log_fields(response_bytes)
+            access_logger(client_address, method, path, version, status_code, content_length, 'close', headers)
+            return
+
+        # Early check if the method is supported
+        is_supported_method = method in ['GET', 'HEAD']
+        keep_alive = keep_alive_checker(version, headers) and is_supported_method
+        connection_mode = 'keep-alive' if keep_alive else 'close'
+
+        # Handle the request - Function goes to handle_request()
+        response = handle_request(method, path, version, headers, connection_mode)
+        if isinstance(response, bytes):
+            response_bytes = response
+        else:
+            response_bytes = response.encode()
+
+        client_connection.sendall(response_bytes)
+        status_code, content_length = extract_response_log_fields(response_bytes)
+        access_logger(client_address, method, path, version, status_code, content_length, connection_mode, headers)
+
+        if keep_alive:
+            # One thread handles one request; keep-alive hands the same socket to a new thread for the next request.
+            next_thread = threading.Thread(target=handle_client, args=(client_connection, client_address, request_buffer))
+            next_thread.start()
+            close_connection = False
     except socket.timeout:
         log_console(f"Connection timeout for {client_address}; Closing connection for keep-alive.")
     except Exception as e:
         warn_console(f"Error handling client {client_address}: {e}")
     finally:
-        # Close the connection
-        client_connection.close()
+        # Close the connection if there is no keep-alive thread handoff
+        if close_connection:
+            client_connection.close()
 
 def main(): # Main part of the server
     server_socket = None
