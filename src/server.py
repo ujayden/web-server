@@ -15,7 +15,7 @@ ACCESS_LOG_FILE = 'server.log'  # Records the historical information about the c
 ACCESS_LOG_LOCATION = os.path.join(os.path.dirname(SERVER_SOURCE_DIR), ACCESS_LOG_FILE)  # Log file in the same directory as server.py
 ACCESS_LOG_TO_CONSOLE = True # Print access log to console or not.
 KEEP_ALIVE_TIMEOUT_SECONDS = 5  # Timeout for idle persistent connections
-QUEUE_TCP_CONNECTIONS = 10 # Number of TCP connections to queue (for listen())
+QUEUE_TCP_CONNECTIONS = 256 # Number of TCP connections to queue (for listen())
 
 STATUS_MESSAGES = {
     200: "OK",
@@ -38,6 +38,12 @@ CONTENT_TYPE_MAPPING = {
     '.txt': 'text/plain',
     'default': 'application/octet-stream'
     }
+
+BLOCK_PATH_LIST = {
+    # For demostrate 403 Forbidden
+    # These PATH will generate 403
+    '/forbidden.html', # Specific PATH
+}
 # END OF CONFIGURATION
 
 
@@ -131,20 +137,32 @@ def read_file(file_path):
     Read file (Binary Mode) from specific path, the return is the content of the file and do not modified. 
     [!] FileNotFoundError does not print in console. Since we dont have 500, it will assume **404** in future step.
     @param file_path: The path of the file to be read.
-    @return: Tuple (success, content) where success is a boolean indicating if the file was read successfully, and content is the file content if successful, or None if not.
+    @return: Tuple (success, content, error_types) - success: boolean indicating read status,  content: file content if successful, or None if not, error_types: string indicating the type of error if unsuccessful.
+    
     """
     try:
+        file_path = os.path.abspath(file_path)
+
         # Safety check
         if os.path.commonpath([SERVER_ROOT_DIR, file_path]) != SERVER_ROOT_DIR:
-            raise Exception("Attempt to access file outside of root directory.")
-        
+            raise PermissionError("Attempt to access file outside of server root directory.")
+
+        # Convert filesystem path back to URL-like path for BLOCK_PATH_LIST matching.
+        normalized_path = '/' + os.path.relpath(file_path, SERVER_ROOT_DIR).replace('\\', '/')
+        if normalized_path in BLOCK_PATH_LIST:
+            raise PermissionError(f"Blocked path from BLOCK_PATH_LIST: {normalized_path}")
+
         with open(file_path, 'rb') as file:
-            return True, file.read()
+            return True, file.read(), None
+    except PermissionError as e:
+        # This include: OS-level permission issues, illegal path, and BLOCK_PATH_LIST check
+        warn_console(f"Permission denied for file {file_path}: {e}")
+        return False, None, "permission_denied"
     except FileNotFoundError:
-        return False, None
+        return False, None, "not_found"
     except Exception as e:
         warn_console(f"Error reading file {file_path}: {e}")
-        return False, None
+        return False, None, "internal_error"
 
 def generate_content_type(file_path):
     """
@@ -215,6 +233,35 @@ def keep_alive_checker(version, request_headers):
         return 'keep-alive' in connection_header_set # Return TRUE if 'keep-alive' by client
     return False
 
+def http_version_checker(version):
+    """
+    Validate HTTP version from request line.
+    @param version: HTTP version string from request line
+    @return: True if version is supported, otherwise False
+    """
+    return version in ['HTTP/1.0', 'HTTP/1.1']
+
+def response_http_version(version):
+    """
+    Resolve HTTP version for response status line.
+    @param version: HTTP version string from request line
+    @return: HTTP/1.0 or HTTP/1.1 if supported, otherwise HTTP/1.1
+    """
+    if http_version_checker(version):
+        return version
+    return 'HTTP/1.1'
+
+def host_header_checker(version, request_headers):
+    """
+    Validate Host header for HTTP/1.1 requests.
+    @param version: HTTP version string from request line
+    @param request_headers: Request header dictionary
+    @return: True if Host header is valid (or not required), otherwise False
+    """
+    if version != 'HTTP/1.1':
+        return True
+    return bool(request_headers.get('host', '').strip())
+
 def add_connection_headers(response_headers, connection_mode):
     """
     Add Connection headers to response headers.
@@ -236,10 +283,12 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
     @return: Formatted HTTP response, ready to be sent back to the client.
     """
     
+    response_version = response_http_version(version)
+
     # First, we need to check if the method is supported (GET or HEAD)
     if method not in ['GET', 'HEAD']:
         warn_console(f"Unsupported HTTP method: {method}")
-        response = generate_error_response(400, method, connection_mode)  # Bad Request for unsupported methods
+        response = generate_error_response(400, method, connection_mode, version=response_version)  # Bad Request for unsupported methods
         return response
 
     # Then, process path and try to serve the requested file
@@ -247,16 +296,19 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
         file_path = os.path.join(SERVER_ROOT_DIR, 'index.html')
     elif path == '/' and not ROOT_TO_INDEX_HTML:
         warn_console(f"Root path '/' requested but ROOT_TO_INDEX_HTML is set to False.")
-        response = generate_error_response(404, method, connection_mode)
+        response = generate_error_response(404, method, connection_mode, version=response_version)
         return response
     else:
         file_path = os.path.join(SERVER_ROOT_DIR, path.lstrip('/'))
  
-    success, content = read_file(file_path)
-    # Since no 500, success = False is treated as 404
+    success, content, error_type = read_file(file_path)
     if not success:
-        warn_console(f"File not found or IO error: {file_path}")
-        response = generate_error_response(404, method, connection_mode)  # File Not Found
+        if error_type == "permission_denied":
+            warn_console(f"Forbidden file access: {file_path}")
+            response = generate_error_response(403, method, connection_mode, version=response_version)
+        else:
+            warn_console(f"File not found or IO error: {file_path}")
+            response = generate_error_response(404, method, connection_mode, version=response_version)  # File Not Found
         return response
 
     # Handelling "If-Modified-Since" header for cache validation
@@ -271,7 +323,7 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
                 "Last-Modified": format_http_datetime(last_modified_dt)
             }
             add_connection_headers(response_headers, connection_mode)
-            first_line = f"HTTP/1.1 304 Not Modified\r\n"
+            first_line = f"{response_version} 304 Not Modified\r\n"
             header_part = generate_respond_headers(response_headers)
             return first_line + header_part + "\r\n"
 
@@ -288,7 +340,7 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
     add_connection_headers(response_headers, connection_mode)
     # since read mode is rb, content = bytes, len(content) = byte size of the file, which = correct value for Content-Length header.
 
-    first_line = f"HTTP/1.1 200 OK\r\n"
+    first_line = f"{response_version} 200 OK\r\n"
     header_part = generate_respond_headers(response_headers)
     # IF method is HEAD, we only return the header without the body
     response = first_line + header_part + "\r\n"
@@ -296,14 +348,16 @@ def handle_request(method, path, version, request_headers, connection_mode='clos
         response = response.encode() + content
     return response
 
-def generate_error_response(status_code, method='GET', connection_mode='close'):
+def generate_error_response(status_code, method='GET', connection_mode='close', version='HTTP/1.1'):
     """
     Generate general HTTP error response based on the status code provided. If the status code is not recognized, defaults is "Unknown Error".
     @param status_code: HTTP status code (e.g., 400, 403, 404)
     @param method: HTTP method (default: 'GET'), used to determine if the response should include a body (False for HEAD requests - RFC 9110)
     @param connection_mode: Connection response mode ('keep-alive' or 'close')
+    @param version: HTTP version used for response status line
     @return: Formatted HTTP response string with the appropriate status message and content.
     """
+    response_version = response_http_version(version)
     status_message = STATUS_MESSAGES.get(status_code, "Unknown Error")
     body = status_message
 
@@ -313,7 +367,7 @@ def generate_error_response(status_code, method='GET', connection_mode='close'):
     }
     add_connection_headers(response_headers, connection_mode)
 
-    first_line = f"HTTP/1.1 {status_code} {status_message}\r\n"
+    first_line = f"{response_version} {status_code} {status_message}\r\n"
     header_part = generate_respond_headers(response_headers)
     response = first_line + header_part + "\r\n"
 
@@ -375,51 +429,72 @@ def parse_http_request(raw_request):
 
     return method, path, version, headers
 
-def handle_client(client_connection, client_address):
+def handle_client(client_connection, client_address, request_buffer=b''):
+    close_connection = True
     try:
         client_connection.settimeout(KEEP_ALIVE_TIMEOUT_SECONDS)
-        request_buffer = b''
 
-        while True:
-            raw_request, request_buffer = read_raw_http_request(client_connection, request_buffer)
-            if raw_request is None:
-                break
+        raw_request, request_buffer = read_raw_http_request(client_connection, request_buffer)
+        if raw_request is None:
+            return
 
-            method, path, version, headers = parse_http_request(raw_request)
-            if method is None:
-                warn_console(f"Received malformed request from {client_address} - Invalid request line")
-                response = generate_error_response(400, connection_mode='close')
-                response_bytes = response.encode()
-                client_connection.sendall(response_bytes)
-                status_code, content_length = extract_response_log_fields(response_bytes)
-                access_logger(client_address, 'UNKNOWN', '-', 'HTTP/1.1', status_code, content_length, 'close', {})
-                break
-
-            # Early check if the method is supported
-            is_supported_method = method in ['GET', 'HEAD']
-            keep_alive = keep_alive_checker(version, headers) and is_supported_method
-            connection_mode = 'keep-alive' if keep_alive else 'close'
-
-            # Handle the request - Function goes to handle_request()
-            response = handle_request(method, path, version, headers, connection_mode)
-            if isinstance(response, bytes):
-                response_bytes = response
-            else:
-                response_bytes = response.encode()
-
+        method, path, version, headers = parse_http_request(raw_request)
+        if method is None:
+            warn_console(f"Received malformed request from {client_address} - Invalid request line")
+            response = generate_error_response(400, connection_mode='close')
+            response_bytes = response.encode()
             client_connection.sendall(response_bytes)
             status_code, content_length = extract_response_log_fields(response_bytes)
-            access_logger(client_address, method, path, version, status_code, content_length, connection_mode, headers)
+            access_logger(client_address, 'UNKNOWN', '-', 'HTTP/1.1', status_code, content_length, 'close', {})
+            return
 
-            if not keep_alive:
-                break
+        if not http_version_checker(version):
+            warn_console(f"Unsupported HTTP version from {client_address}: {version}")
+            response = generate_error_response(400, connection_mode='close', version=version)
+            response_bytes = response.encode()
+            client_connection.sendall(response_bytes)
+            status_code, content_length = extract_response_log_fields(response_bytes)
+            access_logger(client_address, method, path, version, status_code, content_length, 'close', headers)
+            return
+
+        if not host_header_checker(version, headers):
+            warn_console(f"Missing Host header in HTTP/1.1 request from {client_address}")
+            response = generate_error_response(400, connection_mode='close', version=version)
+            response_bytes = response.encode()
+            client_connection.sendall(response_bytes)
+            status_code, content_length = extract_response_log_fields(response_bytes)
+            access_logger(client_address, method, path, version, status_code, content_length, 'close', headers)
+            return
+
+        # Early check if the method is supported
+        is_supported_method = method in ['GET', 'HEAD']
+        keep_alive = keep_alive_checker(version, headers) and is_supported_method
+        connection_mode = 'keep-alive' if keep_alive else 'close'
+
+        # Handle the request - Function goes to handle_request()
+        response = handle_request(method, path, version, headers, connection_mode)
+        if isinstance(response, bytes):
+            response_bytes = response
+        else:
+            response_bytes = response.encode()
+
+        client_connection.sendall(response_bytes)
+        status_code, content_length = extract_response_log_fields(response_bytes)
+        access_logger(client_address, method, path, version, status_code, content_length, connection_mode, headers)
+
+        if keep_alive:
+            # One thread handles one request; keep-alive hands the same socket to a new thread for the next request.
+            next_thread = threading.Thread(target=handle_client, args=(client_connection, client_address, request_buffer))
+            next_thread.start()
+            close_connection = False
     except socket.timeout:
         log_console(f"Connection timeout for {client_address}; Closing connection for keep-alive.")
     except Exception as e:
         warn_console(f"Error handling client {client_address}: {e}")
     finally:
-        # Close the connection
-        client_connection.close()
+        # Close the connection if there is no keep-alive thread handoff
+        if close_connection:
+            client_connection.close()
 
 def main(): # Main part of the server
     server_socket = None
