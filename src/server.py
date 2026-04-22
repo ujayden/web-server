@@ -27,7 +27,6 @@ STATUS_MESSAGES = {
 
 CONTENT_TYPE_MAPPING = {
     # Support HTML and Image required for Project requirements. Other file type is for completeness as a general web server.
-    # I hope it won't down my grade. (?)
     '.html': 'text/html',
     '.css': 'text/css',
     '.js': 'application/javascript',
