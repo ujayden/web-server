@@ -1,9 +1,11 @@
 # COMP2322 Multi-threaded Web Server Project
+
+The Hong Kong Polytechnic University - COMP2322 Computer Networking
+
 Respository Name: web-server
 
-(The Hong Kong Polytechnic University - COMP2322 Computer Networking)
-
 # Objective
+
 This project aims to develop a socket program to implement a Web service using the HTTP protocol.
 
 # Features
@@ -15,7 +17,28 @@ This project aims to develop a socket program to implement a Web service using t
 - Create an HTTP response message consisting of the requested file preceded by header lines;
 - Send the response over the TCP connection to the requesting client. If the client requests a file that is not present in your server, your server should return a “404 Not Found” error message.
 
-# Instruction to Run the Server
+# Compile the source code
+
+Since this project is written in Python, **no compilation** is required. You can run the source code directly.
+
+# Environment Requirements
+- Python 3.x (Minimum version: 3.6, Recommended version: 3.14.3)
+- This project is written and tested on **Python 3.14.3**, on Windows 11 x64. It should also work on other platforms (Linux, macOS) with Python 3.x installed.
+- No additional libraries are required, as it uses only standard Python libraries.
+
+# Setup Instructions
+1. Clone the repository to your local machine.
+```text
+git clone https://github.com/ujayden/web-server
+cd web-server
+```
+2. Ensure the `test_files` directory is located in the project root directory, as the server will use it to serve files.
+
+3. (Optional) If you want to change the server's root directory or other configurations, you can edit the constants defined at the beginning of `server.py`.
+
+4. **Critical: On some systems, running a server on port 80 may require administrative privileges. If you encounter permission issues, consider changing the `SERVER_PORT` constant in `server.py` to a higher port number (e.g., 8080) that does not require special permissions.**
+
+# Run the Server
 
 1. Run the server script.
 ```text
@@ -84,7 +107,7 @@ For more detailed test cases and expected outputs, please refer to `test-cases.m
 ├─ README.md
 ├─ src
 │  └─ server.py # Main server code 
-└─ test_files # HTML & image files for testing
+├─ test_files # HTML & image files for testing
 └─ server.log # Request log for client access and server responses
 ```
 
